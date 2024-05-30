@@ -12,7 +12,9 @@ config = {"skeleton": None,
           "device": "cuda",
           "seq_window_length": 8,
           "seq_window_overlap": 2,
-          "orig_seq": None
+          "orig_sequences": [],
+          "orig_seq1_index": 0,
+          "orig_seq2_index": 1
           }
 
 def smooth_1d(data_1d, window_length, window_type="hanning"):
@@ -102,29 +104,39 @@ class MotionSynthesis():
         self.device = config["device"]
         self.seq_window_length = config["seq_window_length"]
         self.seq_window_overlap = config["seq_window_overlap"]
-        self.orig_seq = config["orig_seq"]
+        self.orig_sequences = config["orig_sequences"]
+        self.orig_seq1_index = config["orig_seq1_index"]
+        self.orig_seq2_index = config["orig_seq2_index"]
+                
+        self.orig_seq1 = self.orig_sequences[self.orig_seq1_index]
+        self.orig_seq2 = self.orig_sequences[self.orig_seq2_index]
+        
+        self.orig_seq1_changed = False
+        self.orig_seq2_changed = False
         
         self.seq_window_offset = self.seq_window_length - self.seq_window_overlap
-        self.seq_length = self.orig_seq.shape[0]
-        self.joint_count = self.orig_seq.shape[1]
-        self.joint_dim = self.orig_seq.shape[2]
-        self.pose_dim = self.joint_count * self.joint_dim
         
+        self.seq1_length = self.orig_seq1.shape[0]
+        self.seq2_length = self.orig_seq2.shape[0]
+        
+        self.joint_count = self.orig_seq1.shape[1]
+        self.joint_dim = self.orig_seq1.shape[2]
+        self.pose_dim = self.joint_count * self.joint_dim
         self.joint_offsets = self.skeleton ["offsets"].astype(np.float32)
         self.joint_parents = self.skeleton ["parents"]
         self.joint_children = self.skeleton ["children"]
         
         self._create_edge_list()
         
-        self.orig_seq_frame_index1 = self.seq_window_offset
-        self.orig_seq_frame_index2 = self.seq_window_offset
+        self.orig_seq1_frame_index = self.seq_window_offset
+        self.orig_seq2_frame_index = self.seq_window_offset
         
-        self.orig_seq_frame_incr1 = self.seq_window_offset
-        self.orig_seq_frame_incr2 = self.seq_window_offset
-        self.orig_seq_frame_range1 = [0, self.seq_length - self.seq_window_length]
-        self.orig_seq_frame_range2 = [0, self.seq_length - self.seq_window_length]
+        self.orig_seq1_frame_incr = self.seq_window_offset
+        self.orig_seq2_frame_incr = self.seq_window_offset
+        self.orig_seq1_frame_range = [0, self.seq1_length - self.seq_window_length]
+        self.orig_seq2_frame_range = [0, self.seq2_length - self.seq_window_length]
         
-        self.orig_encoding_mix_factor = 0.0
+        self.encoding_mix = torch.zeros((1, self.model_encoder.latent_dim)).to(self.device)
         self.encoding_offset = torch.zeros((1, self.model_encoder.latent_dim)).to(self.device)
         
         #self.gen_seq = torch.from_numpy(self.orig_seq[:self.seq_window_length, ...]).to(self.device)
@@ -145,34 +157,67 @@ class MotionSynthesis():
             for child_joint_index in self.joint_children[parent_joint_index]:
                 self.edge_list.append([parent_joint_index, child_joint_index])
                 
-    def setFrameIndex1(self, index):
-        self.orig_seq_frame_index1 = min(index, self.seq_length - self.seq_window_length)
-
-    def setFrameIndex2(self, index):
-        self.orig_seq_frame_index2 = min(index, self.seq_length - self.seq_window_length)
-           
-    def setFrameRange1(self, startFrame, endFrame):
-        self.orig_seq_frame_range1[0] = min(startFrame, self.seq_length - self.seq_window_length)
-        self.orig_seq_frame_range1[1] = min(endFrame, self.seq_length - self.seq_window_length)
+    def setSeq1Index(self, index):
         
-    def setFrameRange2(self, startFrame, endFrame):
-        self.orig_seq_frame_range2[0] = min(startFrame, self.seq_length - self.seq_window_length)
-        self.orig_seq_frame_range2[1] = min(endFrame, self.seq_length - self.seq_window_length)
+        self.orig_seq1_index = min(index, len(self.orig_sequences)) 
+        self.orig_seq1_changed = True
         
-    def setFrameIncrement1(self, incr):
-        self.orig_seq_frame_incr1 = incr
+    def setSeq2Index(self, index):
         
-    def setFrameIncrement2(self, incr):
-        self.orig_seq_frame_incr2 = incr
+        self.orig_seq2_index = min(index, len(self.orig_sequences)) 
+        self.orig_seq2_changed = True
     
-    def setEncodingMixFactor(self, factor):
-        self.orig_encoding_mix_factor = factor
+    def changeSeq1(self):
+        
+        self.orig_seq1 = self.orig_sequences[self.orig_seq1_index]
+        self.seq1_length = self.orig_seq1.shape[0]
+        self.orig_seq1_frame_index = self.seq_window_offset
+        self.orig_seq1_frame_range = [0, self.seq1_length - self.seq_window_length]
+        
+        self.orig_seq1_changed = False
+        
+    def changeSeq2(self):
+        
+        self.orig_seq2 = self.orig_sequences[self.orig_seq2_index]
+        self.seq2_length = self.orig_seq2.shape[0]
+        self.orig_seq2_frame_index = self.seq_window_offset
+        self.orig_seq2_frame_range = [0, self.seq2_length - self.seq_window_length]
+        
+        self.orig_seq2_changed = False
+                
+    def setSeq1FrameIndex(self, index):
+        self.orig_seq1_frame_index = min(index, self.seq1_length - self.seq_window_length)
+
+    def setSeq2FrameIndex(self, index):
+        self.orig_seq2_frame_index = min(index, self.seq2_length - self.seq_window_length)
+           
+    def setSeq1FrameRange(self, startFrame, endFrame):
+        self.orig_seq1_frame_range[0] = min(startFrame, self.seq1_length - self.seq_window_length)
+        self.orig_seq1_frame_range[1] = min(endFrame, self.seq1_length - self.seq_window_length)
+        
+    def setSeq2FrameRange(self, startFrame, endFrame):
+        self.orig_seq2_frame_range[0] = min(startFrame, self.seq2_length - self.seq_window_length)
+        self.orig_seq2_frame_range[1] = min(endFrame, self.seq2_length - self.seq_window_length)
+        
+    def setSeq1FrameIncrement(self, incr):
+        self.orig_seq1_frame_incr = incr
+        
+    def setSeq2FrameIncrement(self, incr):
+        self.orig_seq2_frame_incr = incr
+    
+    def setEncodingMix(self, mix):
+        self.encoding_mix = torch.tensor(mix, dtype=torch.float32).to(self.device)
         
     def setEncodingOffset(self, offset):
         self.encoding_offset = torch.tensor(offset, dtype=torch.float32).to(self.device)
                 
     def update(self):
         
+        if self.orig_seq1_changed == True:
+            self.changeSeq1()
+            
+        if self.orig_seq2_changed == True:
+            self.changeSeq2()
 
         #print("self.seq_update_index ", self.seq_update_index)
         
@@ -211,20 +256,20 @@ class MotionSynthesis():
         
         #print("orig seq1 excerpt from ", self.orig_seq_frame_index1, " to ", (self.orig_seq_frame_index1 + self.seq_window_length) )
         
-        orig_seq_window1 = self.orig_seq[self.orig_seq_frame_index1:self.orig_seq_frame_index1 + self.seq_window_length, ...]
-        orig_seq_window1 = torch.from_numpy(orig_seq_window1).reshape((1, self.seq_window_length, self.pose_dim)).to(self.device)
+        orig_seq1_window = self.orig_seq1[self.orig_seq1_frame_index:self.orig_seq1_frame_index + self.seq_window_length, ...]
+        orig_seq1_window = torch.from_numpy(orig_seq1_window).reshape((1, self.seq_window_length, self.pose_dim)).to(self.device)
         
         #print("orig seq2 excerpt from ", self.orig_seq_frame_index2, " to ", (self.orig_seq_frame_index2 + self.seq_window_length) )
 
-        orig_seq_window2 = self.orig_seq[self.orig_seq_frame_index2:self.orig_seq_frame_index2 + self.seq_window_length, ...]
-        orig_seq_window2 = torch.from_numpy(orig_seq_window2).reshape((1, self.seq_window_length, self.pose_dim)).to(self.device)
+        orig_seq2_window = self.orig_seq2[self.orig_seq2_frame_index:self.orig_seq2_frame_index + self.seq_window_length, ...]
+        orig_seq2_window = torch.from_numpy(orig_seq2_window).reshape((1, self.seq_window_length, self.pose_dim)).to(self.device)
         
         with torch.no_grad():
-            encoding1 = self.model_encoder(orig_seq_window1)
-            encoding2 = self.model_encoder(orig_seq_window2)
+            encoding1 = self.model_encoder(orig_seq1_window)
+            encoding2 = self.model_encoder(orig_seq2_window)
 
         # mix encoding 1 and encoding 2
-        encoding = encoding1 * (1.0 - self.orig_encoding_mix_factor) + encoding2 * self.orig_encoding_mix_factor
+        encoding = encoding1 * (1.0 - self.encoding_mix) + encoding2 * self.encoding_mix
         
         # add encoding offset
         encoding += self.encoding_offset 
@@ -239,17 +284,17 @@ class MotionSynthesis():
         self.gen_seq_window = qfix(self.gen_seq_window)
         
         # increment orig frame index 1 and orig frame index 2
-        self.orig_seq_frame_index1 += self.orig_seq_frame_incr1
-        if self.orig_seq_frame_index1 < self.orig_seq_frame_range1[0]:
-            self.orig_seq_frame_index1 = self.orig_seq_frame_range1[0]  
-        elif self.orig_seq_frame_index1 >= self.orig_seq_frame_range1[1]:
-            self.orig_seq_frame_index1 = self.orig_seq_frame_range1[0]  
+        self.orig_seq1_frame_index += self.orig_seq1_frame_incr
+        if self.orig_seq1_frame_index < self.orig_seq1_frame_range[0]:
+            self.orig_seq1_frame_index = self.orig_seq1_frame_range[0]  
+        elif self.orig_seq1_frame_index >= self.orig_seq1_frame_range[1]:
+            self.orig_seq1_frame_index = self.orig_seq1_frame_range[0]  
             
-        self.orig_seq_frame_index2 += self.orig_seq_frame_incr2
-        if self.orig_seq_frame_index2 < self.orig_seq_frame_range2[0]:
-            self.orig_seq_frame_index2 = self.orig_seq_frame_range2[0]  
-        elif self.orig_seq_frame_index2 >= self.orig_seq_frame_range2[1]:
-            self.orig_seq_frame_index2 = self.orig_seq_frame_range2[0]  
+        self.orig_seq2_frame_index += self.orig_seq2_frame_incr
+        if self.orig_seq2_frame_index < self.orig_seq2_frame_range[0]:
+            self.orig_seq2_frame_index = self.orig_seq2_frame_range[0]  
+        elif self.orig_seq2_frame_index >= self.orig_seq2_frame_range[1]:
+            self.orig_seq2_frame_index = self.orig_seq2_frame_range[0]  
       
 
     def _blend(self):

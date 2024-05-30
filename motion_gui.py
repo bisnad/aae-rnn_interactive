@@ -102,7 +102,7 @@ class MotionGui(QtWidgets.QWidget):
             
             next_update_interval = max(self.pose_thread_interval - (end_time - start_time), 0.0)
             
-            sleep(self.pose_thread_interval)
+            sleep(next_update_interval)
 
             
     def update_pred_seq(self):

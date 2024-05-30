@@ -27,16 +27,19 @@ class MotionControl():
          
         self.dispatcher = dispatcher.Dispatcher()
         
-        self.dispatcher.map("/mocap/frameindex1", self.setFrameIndex1)
-        self.dispatcher.map("/mocap/frameindex2", self.setFrameIndex2)
+        self.dispatcher.map("/mocap/seq1index", self.setSeq1Index)
+        self.dispatcher.map("/mocap/seq2index", self.setSeq2Index)
         
-        self.dispatcher.map("/mocap/framerange1", self.setFrameRange1)
-        self.dispatcher.map("/mocap/framerange2", self.setFrameRange2)
+        self.dispatcher.map("/mocap/seq1frameindex", self.setSeq1FrameIndex)
+        self.dispatcher.map("/mocap/seq2frameindex", self.setSeq2FrameIndex)
         
-        self.dispatcher.map("/mocap/frameincr1", self.setFrameIncrement1)
-        self.dispatcher.map("/mocap/frameincr2", self.setFrameIncrement2)        
+        self.dispatcher.map("/mocap/seq1framerange", self.setSeq1FrameRange)
+        self.dispatcher.map("/mocap/seq2framerange", self.setSeq2FrameRange)
         
-        self.dispatcher.map("/synth/encodingmixfactor", self.setEncodingMixFactor)
+        self.dispatcher.map("/mocap/seq1frameincr", self.setSeq1FrameIncrement)
+        self.dispatcher.map("/mocap/sew2frameincr", self.setSeq2FrameIncrement)        
+        
+        self.dispatcher.map("/synth/encodingmix", self.setEncodingMix)
         self.dispatcher.map("/synth/encodingoffset", self.setEncodingOffset)    
     
         self.server = osc_server.ThreadingOSCUDPServer((self.ip, self.port), self.dispatcher)
@@ -52,49 +55,63 @@ class MotionControl():
     def stop(self):
         self.server.server_close()
         
-    def setFrameIndex1(self, address, *args):
+    def setSeq1Index(self, address, *args):
+        
+        index = args[0]
+        self.synthesis.setSeq1Index(index)
+        
+    def setSeq2Index(self, address, *args):
+        
+        index = args[0]
+        self.synthesis.setSeq2Index(index)
+        
+    def setSeq1FrameIndex(self, address, *args):
         
         index = args[0]
         
-        self.synthesis.setFrameIndex1(index)
+        self.synthesis.setSeq1FrameIndex(index)
 
-    def setFrameIndex2(self, address, *args):
+    def setSeq2FrameIndex(self, address, *args):
         
         index = args[0]
         
-        self.synthesis.setFrameIndex2(index)
+        self.synthesis.setSeq2FrameIndex(index)
         
-    def setFrameRange1(self, address, *args):
+    def setSeq1FrameRange(self, address, *args):
         
         startFrame = args[0]
         endFrame = args[1]
         
-        self.synthesis.setFrameRange1(startFrame, endFrame)
+        self.synthesis.setSeq1FrameRange(startFrame, endFrame)
 
-    def setFrameRange2(self, address, *args):
+    def setSeq2FrameRange(self, address, *args):
         
         startFrame = args[0]
         endFrame = args[1]
         
-        self.synthesis.setFrameRange2(startFrame, endFrame)    
+        self.synthesis.setSeq2FrameRange(startFrame, endFrame)    
 
-    def setFrameIncrement1(self, address, *args):
+    def setSeq1FrameIncrement(self, address, *args):
         
         incr = args[0]
         
-        self.synthesis.setFrameIncrement1(incr)
+        self.synthesis.setSeq1FrameIncrement(incr)
 
-    def setFrameIncrement2(self, address, *args):
+    def setSeq2FrameIncrement(self, address, *args):
         
         incr = args[0]
         
-        self.synthesis.setFrameIncrement2(incr)
+        self.synthesis.setSeq2FrameIncrement(incr)
         
-    def setEncodingMixFactor(self, address, *args):
+    def setEncodingMix(self, address, *args):
         
-        factor = args[0]
+        mix = []
         
-        self.synthesis.setEncodingMixFactor(factor)
+        for d in range(self.latent_dim):
+        
+            mix.append(args[d])
+        
+        self.synthesis.setEncodingMix(mix)
         
     def setEncodingOffset(self, address, *args):
         
